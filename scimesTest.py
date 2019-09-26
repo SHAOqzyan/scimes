@@ -5,11 +5,11 @@ from astrodendro import ppv_catalog
 from astropy import units as u
 from scimes import SpectralCloudstering
 
-
+from astropy.wcs import WCS
 
 
 class mySCIMES:
-
+	dataPath="./data/"
 	metadata = {}
 	metadata['data_unit'] = u.K
 	metadata['spatial_scale'] =  30 * u.arcsec
@@ -30,30 +30,35 @@ class mySCIMES:
 
 
 	def doDendro(self, data,minV=3,minDelta=3,minP=1000 ):
-
-		d = Dendrogram.compute(data, min_value=minV*sigma, min_delta=minDelta*sigma, min_npix=minP)
+		print "Calculating dendrogram...."
+		d = Dendrogram.compute(data, min_value=minV*self.sigma, min_delta=minDelta*self.sigma, min_npix=minP)
+		print "Done"
 		return d
 
 	def doCluster(self,dendroCase ,saveName,head ):
+		savePath=self.dataPath+saveName+"/"
+
+		trunkN = len(dendroCase.trunk)
+		print "trunkN: {} ".format(trunkN  )
 
 
+		os.system("mkdir "+savePath)
 
-		saveCloudFITS=saveName+"CloudAsgn.fits"
-		saveTrunkFITS=saveName+"TrunkAsgn.fits"
+		saveCloudFITS=savePath+saveName+"CloudAsgn.fits"
+		saveTrunkFITS=savePath+saveName+"TrunkAsgn.fits"
 
-		saveCloudCat=saveName+"CloudCat.fits"
+		saveCloudCat=savePath+saveName+"CloudCat.fit"
+		saveDenroCat=savePath+saveName+"DendroCat.fit"
+		saveDenroFITS=savePath+saveName+"DendroFITS.fits"
+		dendroCase.save_to(saveDenroFITS) #save dendro
 
+		self.metadata['wcs'] = WCS( head )
 
 		cat = ppv_catalog(dendroCase, self.metadata)
 
-		dclust = SpectralCloudstering(dendroCase,cat,head)
-
-		sigma = 0.5 #K, noise level
-
-		d = Dendrogram.compute(data, min_value=3*sigma, min_delta=3*sigma, min_npix=500)
 
 
-		dclust = SpectralCloudstering(d,cat,hd)
+		dclust = SpectralCloudstering(dendroCase,cat,head  )
 
 		cloudHDU=dclust.clusters_asgn
 
@@ -62,26 +67,49 @@ class mySCIMES:
 
 		trunkHDU=dclust.trunks_asgn
 
-		trunkHDU.writeto(trunkHDU,overwrite=True)
-
-
+		trunkHDU.writeto(saveTrunkFITS,overwrite=True)
 
 		cCat=cat[dclust.clusters]
-
 		cCat.write(saveCloudCat,overwrite=True)
 
+		cat.write(saveDenroCat,overwrite=True)
+
+		cloudN=   len( set( cloudHDU.data.reshape(-1) ) )-1
 
 
+		#save dendro cat
 
 
-
-		return len(d.trunk)
+		print "trunkN: {}, cloudN: {}".format(trunkN,cloudN)
+		return trunkN,cloudN
 
 	def ZZZ(self):
 		pass
 
+
+
+
 doSCIMES=mySCIMES()
 
-testFITS="G214CO12.fits"
+
+testFITS="scimesTest.fits"
+
 
 data,head =  myFITS.readFITS( testFITS )
+
+
+trunkNList=[]
+cloudNList=[]
+
+for minPs in np.arange(3500,10500,500):
+
+
+	dendroCase=doSCIMES.doDendro(data,minP=minPs)
+	testRegion="G2650TestMinp{}".format(minPs)
+	trunkN,cloudN=doSCIMES.doCluster(dendroCase, testRegion, head )
+
+	trunkNList.append(trunkN )
+	cloudNList.append(cloudN )
+
+print trunkNList
+print cloudNList
